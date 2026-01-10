@@ -6,7 +6,6 @@
 #define local_persist static
 #define internal static
 
-
 #include <windows.h>
 #include <winuser.h>
 #include <wingdi.h>
@@ -14,7 +13,6 @@
 
 global_variable BITMAPINFO BitmapInfo;
 global_variable void* BitmapMemory;
-global_variable HBITMAP BitmapHandle;
 
 /*
     Parameters:
@@ -176,7 +174,7 @@ int WINAPI WinMain(
 
 internal void Win32ResizeDIBSection(int Height, int Width)
 {   
-    // Memory we reserve for the screen. Height * Width for pixels on the screen and * 4 for Colors, blue, red, Green, padding
+    // Memory we reserve for the screen. Each pixel reserves 4 bits.
     size_t BitmapMemorySize = (Height * Width) * 4;
 
     if(BitmapMemory)
@@ -190,15 +188,9 @@ internal void Win32ResizeDIBSection(int Height, int Width)
     BitmapInfo.bmiHeader.biPlanes = 1;
     BitmapInfo.bmiHeader.biBitCount = 32;
     BitmapInfo.bmiHeader.biCompression = BI_RGB;
-
+    
+    //returns a longpointer
     BitmapMemory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-    /*BitmapHandle = CreateDIBSection(
-        BitmapMemory, &BitmapInfo,
-        DIB_RGB_COLORS,
-        &BitmapMemory,
-        NULL, NULL );
-        */
 }
 
 internal void Win32UpdateWindow(HDC DeviceContext, int X, int Y, int Width, int Height)

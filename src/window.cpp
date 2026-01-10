@@ -43,8 +43,8 @@ internal void Win32ResizeDIBSection(int height, int width);
 
 /* Parameters: 
     HDC DeviceContext - Window owns the window, so you have to ask the window permission to draw on it.
-    int X - window is a rectnangle so X is the x coordinate of the top left corner
-    int Y - window is a rectnangle so Y is the y coordinate of the top
+    int X - window is a rectangle 
+    int Y - window is a rectangle
     int Width - width of the rectangle
     int Height - height of the rectangle
 

@@ -1,0 +1,10 @@
+^C:\USERS\ERKIK\DESKTOP\MET_ENGINE\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/erkik/Desktop/MET_ENGINE -BC:/Users/erkik/Desktop/MET_ENGINE/build --check-stamp-file C:/Users/erkik/Desktop/MET_ENGINE/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/Users/erkik/Desktop/MET_ENGINE/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe -DUNICODE  -g -std=gnu++23 -o CMakeFiles\\window.dir\\src\\window.cpp.obj -c C:\\Users\\erkik\\Desktop\\MET_ENGINE\\src\\window.cpp",
+  "file": "C:/Users/erkik/Desktop/MET_ENGINE/src/window.cpp",
+  "output": "CMakeFiles/window.dir/src/window.cpp.obj"
+}
+]

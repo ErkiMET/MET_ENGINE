@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "MET_ENGINE.dir\\Debug\\window.obj",
+            "outputs": [
+                "C:\\Users\\erkik\\Desktop\\MET_ENGINE\\build\\MET_ENGINE.dir\\Debug\\vc143.pdb",
+                "MET_ENGINE.dir\\Debug\\"
+            ],
+            "requires": []
+        }
+    ]
+}

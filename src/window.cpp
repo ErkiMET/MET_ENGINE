@@ -35,7 +35,7 @@ LRESULT CALLBACK MainWindowCallBack(HWND Window, UINT Message, WPARAM WParam, LP
     int width - width of the backbuffer (window)
 
     What it does:
-    1. Resizes the backbuffer to match the new window size (when user changes  the window size).
+    Asks memory from windows and allocates it to the backbuffer.
 */ 
 
 internal void Win32ResizeDIBSection(int height, int width);
@@ -43,8 +43,8 @@ internal void Win32ResizeDIBSection(int height, int width);
 
 /* Parameters: 
     HDC DeviceContext - Window owns the window, so you have to ask the window permission to draw on it.
-    int X - window is a rectangle 
-    int Y - window is a rectangle
+    int X - X Coordinate of rectangle
+    int Y - Y coordinate of the rectangle
     int Width - width of the rectangle
     int Height - height of the rectangle
 
@@ -155,6 +155,7 @@ int WINAPI WinMain(
             
         if(WindowHandle)
         {
+            // Message variable holds the message windows picks up from queue
             MSG Message;
             while(GetMessage(&Message, NULL, 0, 0) > 0)
             {
@@ -176,8 +177,9 @@ int WINAPI WinMain(
 
 internal void Win32ResizeDIBSection(int Height, int Width)
 {   
-    // Memory we reserve for the screen. Height * Width for pixels on the screen and * 4 for Colors, blue, red, Green, padding
-    size_t BitmapMemorySize = (Height * Width) * 4;
+
+    int BytesPerPixel = 4;
+    size_t BitmapMemorySize = (Height * Width) * BytesPerPixel;
 
     if(BitmapMemory)
     {
@@ -191,14 +193,9 @@ internal void Win32ResizeDIBSection(int Height, int Width)
     BitmapInfo.bmiHeader.biBitCount = 32;
     BitmapInfo.bmiHeader.biCompression = BI_RGB;
 
+    //We reserve memory from windows for our backbuffer and write to it
     BitmapMemory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
-    /*BitmapHandle = CreateDIBSection(
-        BitmapMemory, &BitmapInfo,
-        DIB_RGB_COLORS,
-        &BitmapMemory,
-        NULL, NULL );
-        */
 }
 
 internal void Win32UpdateWindow(HDC DeviceContext, int X, int Y, int Width, int Height)

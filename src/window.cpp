@@ -11,10 +11,15 @@
 #include <winuser.h>
 #include <wingdi.h>
 #include <memoryapi.h>
+#include <stdint.h>
 
-global_variable BITMAPINFO BitmapInfo;
-global_variable void* BitmapMemory;
-global_variable HBITMAP BitmapHandle;
+// (NOTE) temporary global variables just to get things work 
+global_variable BITMAPINFO bitmapInfo;
+global_variable void* bitmapMemory;
+global_variable HBITMAP bitmapHandle;
+
+global_variable int bitmapWidth;
+global_variable int bitmapHeight;
 
 /*
     Parameters:
@@ -51,7 +56,7 @@ internal void Win32ResizeDIBSection(int height, int width);
     What it does:
     1. Calls a scretchDIBits function that copies a rectangle from our own backbuffer to the window.
 */
-internal void Win32UpdateWindow(HDC DeviceContext, int X, int Y, int Width, int Height);
+internal void Win32UpdateWindow(HDC DeviceContext, RECT *WindowRect, int X, int Y, int Width, int Height);
 
 
 LRESULT CALLBACK Win32MainWindowCallBack(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -100,7 +105,11 @@ LRESULT CALLBACK Win32MainWindowCallBack(HWND Window, UINT Message, WPARAM WPara
             LONG width = Paint.rcPaint.right - Paint.rcPaint.left; 
             int X = Paint.rcPaint.left;
             int Y = Paint.rcPaint.top;
-            Win32UpdateWindow(DeviceContext, X, Y , width, height);
+
+            // (TODO) Clean up later
+            RECT ClientRect;
+            GetClientRect(Window, &ClientRect);
+            Win32UpdateWindow(DeviceContext, &ClientRect, X, Y, width, height);
             EndPaint(Window, &Paint);
         }break;
 
@@ -177,35 +186,49 @@ int WINAPI WinMain(
 
 internal void Win32ResizeDIBSection(int Height, int Width)
 {   
-
-    int BytesPerPixel = 4;
-    size_t BitmapMemorySize = (Height * Width) * BytesPerPixel;
-
-    if(BitmapMemory)
+    if(bitmapMemory)
     {
-        VirtualFree(BitmapMemory, 0, MEM_RELEASE);
+        VirtualFree(bitmapMemory, 0, MEM_RELEASE);
     }
 
-    BitmapInfo.bmiHeader.biSize = sizeof(BitmapInfo.bmiHeader);
-    BitmapInfo.bmiHeader.biWidth = Width;
-    BitmapInfo.bmiHeader.biHeight = Height;
-    BitmapInfo.bmiHeader.biPlanes = 1;
-    BitmapInfo.bmiHeader.biBitCount = 32;
-    BitmapInfo.bmiHeader.biCompression = BI_RGB;
+    bitmapWidth = Width;
+    bitmapHeight = Height;
 
+    bitmapInfo.bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
+    bitmapInfo.bmiHeader.biWidth = bitmapWidth;
+    bitmapInfo.bmiHeader.biHeight = -bitmapHeight;  // - because we want to render form top to bottom
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
+
+
+    int bytesPerPixel = 4;
+    size_t bitmapMemorySize = (Height * Width) * bytesPerPixel;
     //We reserve memory from windows for our backbuffer and write to it
-    BitmapMemory = VirtualAlloc(0, BitmapMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    bitmapMemory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+    uint8_t *row = static_cast<uint8_t*>(bitmapMemory);
+    for(int Y = 0; Y < bitmapHeight; Y++)
+    {
+        uint32_t *Pixel =  reinterpret_cast<uint32_t*> (row);
+        for( int X = 0; X < bitmapWidth; X++)
+        {
+
+        }
+    }
 
 }
 
-internal void Win32UpdateWindow(HDC DeviceContext, int X, int Y, int Width, int Height)
+internal void Win32UpdateWindow( HDC DeviceContext, RECT *WindowRect, int X, int Y, int Width, int Height)
 {
-    // Copies rectangle of a rectangle that you can copy to another buffer
+    int WindowWidth = WindowRect -> right - WindowRect -> left;
+    int WindowHeight = WindowRect -> bottom - WindowRect -> top;
+
     StretchDIBits(
-        DeviceContext,            // permission from window to draw on a window
-        X, Y, Width, Height,      // Destination of a window we want to draw to
-        X, Y, Width, Height,      // What we want to draw from our backbuffer
-        BitmapMemory,             // Pointer to the backbuffer
-        &BitmapInfo,              // Information about the backbuffer
-        DIB_RGB_COLORS, SRCCOPY); // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
+        DeviceContext,                                  // permission from window to draw on a window
+        0, 0, bitmapWidth, bitmapHeight,                // Destination of a window we want to draw to
+        0, 0, WindowWidth, WindowHeight,                // What we want to draw from our backbuffer
+        bitmapMemory,                                   // Pointer to the backbuffer
+        &bitmapInfo,                                    // Information about the backbuffer
+        DIB_RGB_COLORS, SRCCOPY);                       // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
 }

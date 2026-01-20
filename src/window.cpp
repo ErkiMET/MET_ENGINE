@@ -80,11 +80,16 @@ internal void drawRadient(int xOffset, int yOffset)
         uint32_t *pixel = reinterpret_cast<uint32_t *>(row);
         for (int x = 0; x < bitmapWidth; x++)
         {
-            // BLUE PIXEL TY MICROSOFT!!
             uint8_t blue = static_cast<uint8_t>(x + xOffset);
 
-            // GREEN PIXEL
             uint8_t green = static_cast<uint8_t>(y + yOffset);
+
+            /* 
+                microsoft uses little endian format so the order of bytes we write in memory are reversed.
+                In memory pixels are written like this:     BB GG RR xx
+                so the order in regsiter will be reverse:   xx BB GG RR 
+                So in order to write the colors in correct order we have to shift green by 8 bits.
+            */
             *pixel++ = ((green << 8 ) | blue);
 
         }

@@ -59,7 +59,14 @@ internal void Win32ResizeDIBSection(int width, int height);
     1. Calls a scretchDIBits function that copies a rectangle from our own backbuffer to the window.
 */
 internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int y, int width, int height);
+/* Parameters: 
+    int xOffset - offset for the gradient in the x axis
+    int yOffset - offset for the gradient in the y axis
 
+    What it does:
+    Fills the backbuffer with a gradient pattern.
+*/
+internal void drawRadient(int xOffset, int yOffset);
 internal void drawRadient(int xOffset, int yOffset)
 {
     int width = bitmapWidth;
@@ -70,24 +77,16 @@ internal void drawRadient(int xOffset, int yOffset)
 
     for (int y = 0; y < bitmapHeight; y++)
     {
-        uint8_t *pixel = reinterpret_cast<uint8_t *>(row);
+        uint32_t *pixel = reinterpret_cast<uint32_t *>(row);
         for (int x = 0; x < bitmapWidth; x++)
         {
             // BLUE PIXEL TY MICROSOFT!!
-            *pixel = static_cast<uint8_t>(x + xOffset);
-            ++pixel;
+            uint8_t blue = static_cast<uint8_t>(x + xOffset);
 
             // GREEN PIXEL
-            *pixel = static_cast<uint8_t>(y + yOffset);
-            ++pixel;
+            uint8_t green = static_cast<uint8_t>(y + yOffset);
+            *pixel++ = ((green << 8 ) | blue);
 
-            // RED PIXEL
-            *pixel = 0;
-            ++pixel;
-
-            // PADDING BYTE
-            *pixel = 0;
-            ++pixel;
         }
         row += pitch;
     }
@@ -145,6 +144,7 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
             GetClientRect(window, &clientRect);
             Win32UpdateWindow(deviceContext, &clientRect, X, Y, width, height);
             EndPaint(window, &Paint);
+
         }break;
 
         // When the application is activated or deactivated
@@ -176,7 +176,7 @@ int WINAPI WinMain(
 
     // Define a window class and set attributes
     WNDCLASS WindowClass = {};
-    WindowClass.style = CS_OWNDC |CS_HREDRAW | CS_VREDRAW;
+    WindowClass.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     WindowClass.lpfnWndProc = win32MainWindowCallBack;
     WindowClass.hInstance = instance;
     WindowClass.lpszClassName = L"Met Engine";

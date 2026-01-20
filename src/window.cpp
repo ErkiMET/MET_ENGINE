@@ -4,6 +4,7 @@
 
 #define global_variable static
 #define local_persist static
+// internal is used for functions limited to a single file / class
 #define internal static
 
 
@@ -20,7 +21,8 @@ global_variable void* bitmapMemory;
 global_variable HBITMAP bitmapHandle;
 global_variable int bitmapWidth;
 global_variable int bitmapHeight;
-
+global_variable int BYTES_PER_PIXEL = 4;
+global_variable bool windowRunning = false;
 /*
     Parameters:
     HWND Window - handler to the window.
@@ -56,8 +58,40 @@ internal void Win32ResizeDIBSection(int width, int height);
     What it does:
     1. Calls a scretchDIBits function that copies a rectangle from our own backbuffer to the window.
 */
-internal void Win32UpdateWindow(HDC deviceContext, RECT *windowRect, int x, int y, int width, int height);
+internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int y, int width, int height);
 
+internal void drawRadient(int xOffset, int yOffset)
+{
+    int width = bitmapWidth;
+    int height = bitmapHeight;
+
+    int pitch = bitmapWidth * BYTES_PER_PIXEL;
+    uint8_t *row = static_cast<uint8_t *>(bitmapMemory);
+
+    for (int y = 0; y < bitmapHeight; y++)
+    {
+        uint8_t *pixel = reinterpret_cast<uint8_t *>(row);
+        for (int x = 0; x < bitmapWidth; x++)
+        {
+            // BLUE PIXEL TY MICROSOFT!!
+            *pixel = static_cast<uint8_t>(x + xOffset);
+            ++pixel;
+
+            // GREEN PIXEL
+            *pixel = static_cast<uint8_t>(y + yOffset);
+            ++pixel;
+
+            // RED PIXEL
+            *pixel = 0;
+            ++pixel;
+
+            // PADDING BYTE
+            *pixel = 0;
+            ++pixel;
+        }
+        row += pitch;
+    }
+}
 
 LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {  
@@ -157,7 +191,7 @@ int WINAPI WinMain(
             0,                                                          //optional window styles
             METENGINE,                                                  // Window class name
             L"Met Engine",                                              // Window title
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,  // Window styles
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,                       // Window styles
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,  // Size and position of window
             NULL,                                                        // Parent window 
             NULL,                                                        // Menu 
@@ -167,18 +201,40 @@ int WINAPI WinMain(
             
         if(WindowHandle)
         {
-            // Message variable holds the message windows picks up from queue
-            MSG Message;
-            while(GetMessage(&Message, NULL, 0, 0) > 0)
+            windowRunning = true;
+            int xOffset = 0;
+            int yOffset = 0;
+            // Main message loop
+            while(windowRunning)
             {
-                TranslateMessage(&Message);
-                DispatchMessage(&Message);
+                MSG Message;
+                // PeekMessage checks message queue for any new messages, if there is one removes it from queue and processes it.
+                // return 0 if there is no messages
+                while(PeekMessage(&Message, NULL, 0, 0, PM_REMOVE))
+                {
+                    if(Message.message == WM_QUIT)
+                    {
+                        windowRunning = false;
+                    }
+
+                    TranslateMessage(&Message);
+                    DispatchMessage(&Message);
+                }
+
+                drawRadient(xOffset++, yOffset);
+
+                HDC deviceContext = GetDC(WindowHandle);
+
+                RECT ClientRect;
+                GetClientRect(WindowHandle, &ClientRect);
+                int windowWidth = ClientRect.right - ClientRect.left;
+                int windowHeight = ClientRect.bottom - ClientRect.top;
+                Win32UpdateWindow(deviceContext, &ClientRect, 0, 0, windowWidth, windowHeight);
+                ReleaseDC(WindowHandle, deviceContext);
+                ++xOffset;
             }
         }
-        else
-        {
-            // Todo : log the error
-        }
+
     }
     else
     {
@@ -204,44 +260,17 @@ internal void Win32ResizeDIBSection(int width, int height)
     bitmapInfo.bmiHeader.biBitCount = 32;
     bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    int bytesPerPixel = 4;
-    int pitch = width * bytesPerPixel;
-    size_t bitmapMemorySize = (bitmapWidth * bitmapHeight) * bytesPerPixel;
+    size_t bitmapMemorySize = (bitmapWidth * bitmapHeight) * BYTES_PER_PIXEL;
+
     //We reserve memory from windows for our backbuffer and write to it
     bitmapMemory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
-
-    uint8_t *row = static_cast<uint8_t*>(bitmapMemory);
-    for(int Y = 0; Y < bitmapHeight; Y++)
-    {
-        uint8_t *pixel =  reinterpret_cast<uint8_t*> (row);
-        for( int X = 0; X < bitmapWidth; X++)
-        {
-            // BLUE PIXEL TY MICROSOFT!!
-            *pixel = static_cast<uint8_t>(X);
-            ++pixel;
-
-            //GREEN PIXEL
-            *pixel = static_cast<uint8_t>(Y);
-            ++pixel;
-
-            // RED PIXEL
-            *pixel = 0;
-            ++pixel;
-
-            // PADDING BYTE
-            *pixel = 0;
-            ++pixel;
-
-        }
-        row += pitch;
-    }
-
+    // TODO(Erkik): Probably clear this to black
 }
 
-internal void Win32UpdateWindow(HDC deviceContext, RECT *windowRect, int x, int y, int width, int height)
+internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int y, int width, int height)
 {
-    int windowWidth = windowRect -> right - windowRect -> left;
-    int windowHeight = windowRect -> bottom - windowRect -> top;
+    int windowWidth = clientRect -> right - clientRect -> left;
+    int windowHeight = clientRect -> bottom - clientRect -> top;
 
     StretchDIBits(
         deviceContext,                             // permission from window to draw on a window

@@ -15,7 +15,8 @@ add_executable(MET_ENGINE WIN32 src/window.cpp)
 target_link_libraries(MET_ENGINE PRIVATE
     user32
     kernel32
-    gdi32)
+    gdi32
+)
 
 # define UNICODE for preprocessor
 target_compile_definitions(MET_ENGINE PRIVATE UNICODE)

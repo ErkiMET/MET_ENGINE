@@ -14,15 +14,21 @@
 #include <memoryapi.h>
 #include <stdint.h>
 
-// (NOTE) temporary global variables just to get things work 
-global_variable BITMAPINFO bitmapInfo;
-global_variable void* bitmapMemory;
+// (NOTE) temporary global variables just to get things work
 
-global_variable HBITMAP bitmapHandle;
-global_variable int bitmapWidth;
-global_variable int bitmapHeight;
-global_variable int BYTES_PER_PIXEL = 4;
+struct Win32BackBuffer
+{
+    BITMAPINFO bitmapInfo;
+    void *memory;
+    int width;
+    int height;
+    int pitch;
+};
+
 global_variable bool windowRunning = false;
+global_variable int BYTES_PER_PIXEL = 4;
+global_variable struct Win32BackBuffer globalBuffer;
+
 /*
     Parameters:
     HWND Window - handler to the window.
@@ -45,7 +51,7 @@ LRESULT CALLBACK MainWindowCallBack(HWND Window, UINT Message, WPARAM WParam, LP
     Asks memory from windows and allocates it to the backbuffer.
 */ 
 
-internal void Win32ResizeDIBSection(int width, int height);
+internal void Win32ResizeDIBSection(Win32BackBuffer *Buffer, int width, int height);
 
 
 /* Parameters: 
@@ -58,7 +64,7 @@ internal void Win32ResizeDIBSection(int width, int height);
     What it does:
     1. Calls a scretchDIBits function that copies a rectangle from our own backbuffer to the window.
 */
-internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int y, int width, int height);
+internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, RECT *clientRect, int x, int y, int width, int height);
 /* Parameters: 
     int xOffset - offset for the gradient in the x axis
     int yOffset - offset for the gradient in the y axis
@@ -66,34 +72,36 @@ internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int 
     What it does:
     Fills the backbuffer with a gradient pattern.
 */
-internal void drawRadient(int xOffset, int yOffset);
-internal void drawRadient(int xOffset, int yOffset)
+internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOffset);
+
+
+internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOffset)
 {
-    int width = bitmapWidth;
-    int height = bitmapHeight;
+    // TODO(Erkik) See if passing by reference is faster
 
-    int pitch = bitmapWidth * BYTES_PER_PIXEL;
-    uint8_t *row = static_cast<uint8_t *>(bitmapMemory);
-
-    for (int y = 0; y < bitmapHeight; y++)
+    uint8_t *row = static_cast<uint8_t *>(Buffer->memory);
+    for (int y = 0; y < Buffer->height; y++)
     {
         uint32_t *pixel = reinterpret_cast<uint32_t *>(row);
-        for (int x = 0; x < bitmapWidth; x++)
+        for (int x = 0; x < Buffer->width; x++)
         {
-            uint8_t blue = static_cast<uint8_t>(x + xOffset);
+            uint8_t blue = static_cast<uint8_t>(x + BlueOffset);
 
-            uint8_t green = static_cast<uint8_t>(y + yOffset);
+            uint8_t green = static_cast<uint8_t>(y + GreenOffset);
 
             /* 
-                microsoft uses little endian format so the order of bytes we write in memory are reversed.
-                In memory pixels are written like this:     BB GG RR xx
-                so the order in regsiter will be reverse:   xx BB GG RR 
-                So in order to write the colors in correct order we have to shift green by 8 bits.
+                Our pixel is a 32 bit value it holds 8 bits for each color channel RGB + padding.
+                When we write pixels in memory we want to write them like this
+                Memory : | Red | Green | Blue | Padding |
+                but because microsoft uses little endian it reverses the order when storing in memory like this
+                Register : | Padding | Blue | Green | Red |
+                So in order to get the correct order we have to shift greens bits by 8 and 
+                
             */
-            *pixel++ = ((green << 8 ) | blue);
+            *pixel++ = ( (green << 8 ) | blue);
 
         }
-        row += pitch;
+        row += Buffer->pitch;
     }
 }
 
@@ -106,12 +114,12 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
         // When the window is resized
         case WM_SIZE:
         {   
-            RECT clientRect;
+            RECT ClientRect;
 
-            GetClientRect(window, &clientRect);
-            int height = clientRect.bottom - clientRect.top;
-            int width = clientRect.right - clientRect.left; 
-            Win32ResizeDIBSection(width, height);
+            GetClientRect(window, &ClientRect);
+            int height = ClientRect.bottom - ClientRect.top;
+            int width = ClientRect.right - ClientRect.left; 
+            Win32ResizeDIBSection(&globalBuffer, width, height);
             OutputDebugStringA("WM_SIZE\n");
 
         }break;
@@ -145,9 +153,9 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
             int Y = Paint.rcPaint.top;
 
             // (TODO) Clean up later
-            RECT clientRect;
-            GetClientRect(window, &clientRect);
-            Win32UpdateWindow(deviceContext, &clientRect, X, Y, width, height);
+            RECT ClientRect;
+            GetClientRect(window, &ClientRect);
+            Win32CopyBufferToWindow(&globalBuffer, deviceContext, &ClientRect, X, Y, width, height);
             EndPaint(window, &Paint);
 
         }break;
@@ -169,7 +177,7 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
     return Result;
 }
 
-// Windows version of main function. The C SRC calls this function to start the program.
+// Windows version of main function. The C CRT calls this function to start the program.
 int WINAPI WinMain(
     HINSTANCE instance,
     HINSTANCE prevInstance,
@@ -196,7 +204,7 @@ int WINAPI WinMain(
             0,                                                          //optional window styles
             METENGINE,                                                  // Window class name
             L"Met Engine",                                              // Window title
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,                       // Window styles
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,                           // Window styles
             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,  // Size and position of window
             NULL,                                                        // Parent window 
             NULL,                                                        // Menu 
@@ -213,8 +221,10 @@ int WINAPI WinMain(
             while(windowRunning)
             {
                 MSG Message;
+
                 // PeekMessage checks message queue for any new messages, if there is one removes it from queue and processes it.
                 // return 0 if there is no messages
+
                 while(PeekMessage(&Message, NULL, 0, 0, PM_REMOVE))
                 {
                     if(Message.message == WM_QUIT)
@@ -226,7 +236,7 @@ int WINAPI WinMain(
                     DispatchMessage(&Message);
                 }
 
-                drawRadient(xOffset++, yOffset);
+                drawGradient(&globalBuffer, xOffset++, yOffset);
 
                 HDC deviceContext = GetDC(WindowHandle);
 
@@ -234,7 +244,7 @@ int WINAPI WinMain(
                 GetClientRect(WindowHandle, &ClientRect);
                 int windowWidth = ClientRect.right - ClientRect.left;
                 int windowHeight = ClientRect.bottom - ClientRect.top;
-                Win32UpdateWindow(deviceContext, &ClientRect, 0, 0, windowWidth, windowHeight);
+                Win32CopyBufferToWindow(&globalBuffer, deviceContext, &ClientRect, 0, 0, windowWidth, windowHeight);
                 ReleaseDC(WindowHandle, deviceContext);
                 ++xOffset;
             }
@@ -248,44 +258,45 @@ int WINAPI WinMain(
     return 0;
 }
 
-internal void Win32ResizeDIBSection(int width, int height)
+internal void Win32ResizeDIBSection(Win32BackBuffer *Buffer, int width, int height)
 {   
-    if(bitmapMemory)
+    if(Buffer->memory)
     {
-        VirtualFree(bitmapMemory, 0, MEM_RELEASE);
+        VirtualFree(Buffer->memory, 0, MEM_RELEASE);
     }
 
-    bitmapWidth = width;
-    bitmapHeight = height;
+    Buffer->width = width;
+    Buffer->height = height;
+    Buffer->bitmapInfo.bmiHeader.biSize = sizeof(Buffer->bitmapInfo.bmiHeader);
+    Buffer->bitmapInfo.bmiHeader.biWidth = Buffer->width;
+    Buffer->bitmapInfo.bmiHeader.biHeight = -Buffer->height;  
+    Buffer->bitmapInfo.bmiHeader.biPlanes = 1;
+    Buffer->bitmapInfo.bmiHeader.biBitCount = 32;
+    Buffer->bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    bitmapInfo.bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
-    bitmapInfo.bmiHeader.biWidth = bitmapWidth;
-    bitmapInfo.bmiHeader.biHeight = -bitmapHeight;  // - because we want to render form top to bottom
-    bitmapInfo.bmiHeader.biPlanes = 1;
-    bitmapInfo.bmiHeader.biBitCount = 32;
-    bitmapInfo.bmiHeader.biCompression = BI_RGB;
-
-    size_t bitmapMemorySize = (bitmapWidth * bitmapHeight) * BYTES_PER_PIXEL;
+    size_t bitmapMemorySize = (Buffer->width * Buffer->height) * BYTES_PER_PIXEL;
 
     //We reserve memory from windows for our backbuffer and write to it
-    bitmapMemory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+    Buffer-> memory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
     // TODO(Erkik): Probably clear this to black
+
+    Buffer -> pitch = width * BYTES_PER_PIXEL;
 }
 
-internal void Win32UpdateWindow(HDC deviceContext, RECT *clientRect, int x, int y, int width, int height)
+internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, RECT *clientRect, int x, int y, int width, int height)
 {
     int windowWidth = clientRect -> right - clientRect -> left;
     int windowHeight = clientRect -> bottom - clientRect -> top;
 
     StretchDIBits(
-        deviceContext,                             // permission from window to draw on a window
+        deviceContext,                                      // permission from window to draw on a window
         /*
         x, y, width, height,
         x, y, width, height,
         */                                             
-        0, 0, windowWidth, windowHeight,                // Destination of a window we want to draw to
-        0, 0, bitmapWidth, bitmapHeight ,               // What we want to draw from our backbuffer
-        bitmapMemory,                                   // Pointer to the backbuffer
-        &bitmapInfo,                                    // Information about the backbuffer
-        DIB_RGB_COLORS, SRCCOPY);                       // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
+        0, 0, Buffer->width, Buffer->height,                // Destination of a window we want to draw to
+        0, 0, Buffer->width, Buffer->height ,               // What we want to draw from our backbuffer
+        Buffer -> memory,                                   // Pointer to the backbuffer
+        &Buffer->bitmapInfo,                                // Information about the backbuffer
+        DIB_RGB_COLORS, SRCCOPY);                           // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
 }

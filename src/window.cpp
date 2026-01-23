@@ -4,6 +4,7 @@
 
 #define global_variable static
 #define local_persist static
+
 // internal is used for functions limited to a single file / class
 #define internal static
 
@@ -14,8 +15,6 @@
 #include <memoryapi.h>
 #include <stdint.h>
 
-// (NOTE) temporary global variables just to get things work
-
 struct Win32BackBuffer
 {
     BITMAPINFO bitmapInfo;
@@ -25,16 +24,26 @@ struct Win32BackBuffer
     int pitch;
 };
 
+struct Win32WindowDimension
+{
+    int width;
+    int height;
+};
+
+global_variable HWND window;
 global_variable bool windowRunning = false;
-global_variable int BYTES_PER_PIXEL = 4;
+const global_variable int BYTES_PER_PIXEL = 4;
 global_variable struct Win32BackBuffer globalBuffer;
+
+
+internal Win32WindowDimension Win32GetWindowDimension(HWND window);
 
 /*
     Parameters:
     HWND Window - handler to the window.
     UINT Message - Windows commmunicates by a queue of messages. Each message has a unique identifier.
     WPARAM WParam - not important for now
-    LPARAM LParam - not important for now
+    LPARAM LParam - Give additional information about the message
 
     What it does:
     1. Takes a message from the windows message queue and depending on it flag it does what is specified in the switch case.
@@ -64,7 +73,7 @@ internal void Win32ResizeDIBSection(Win32BackBuffer *Buffer, int width, int heig
     What it does:
     1. Calls a scretchDIBits function that copies a rectangle from our own backbuffer to the window.
 */
-internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, RECT *clientRect, int x, int y, int width, int height);
+internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, int windowWidth, int windowHeight);
 /* Parameters: 
     int xOffset - offset for the gradient in the x axis
     int yOffset - offset for the gradient in the y axis
@@ -85,6 +94,7 @@ internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOff
         uint32_t *pixel = reinterpret_cast<uint32_t *>(row);
         for (int x = 0; x < Buffer->width; x++)
         {
+            uint8_t red = 0;
             uint8_t blue = static_cast<uint8_t>(x + BlueOffset);
 
             uint8_t green = static_cast<uint8_t>(y + GreenOffset);
@@ -98,7 +108,7 @@ internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOff
                 So in order to get the correct order we have to shift greens bits by 8 and 
                 
             */
-            *pixel++ = ( (green << 8 ) | blue);
+            *pixel++ = ( (red << 16 ) | (green << 8 ) | blue);
 
         }
         row += Buffer->pitch;
@@ -114,14 +124,6 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
         // When the window is resized
         case WM_SIZE:
         {   
-            RECT ClientRect;
-
-            GetClientRect(window, &ClientRect);
-            int height = ClientRect.bottom - ClientRect.top;
-            int width = ClientRect.right - ClientRect.left; 
-            Win32ResizeDIBSection(&globalBuffer, width, height);
-            OutputDebugStringA("WM_SIZE\n");
-
         }break;
 
         // When the window is being destroyed
@@ -146,31 +148,52 @@ LRESULT CALLBACK win32MainWindowCallBack(HWND window, UINT message, WPARAM wPara
             PAINTSTRUCT Paint;
 
             HDC deviceContext =  BeginPaint( window, &Paint);
-            
-            LONG height = Paint.rcPaint.bottom - Paint.rcPaint.top;
-            LONG width = Paint.rcPaint.right - Paint.rcPaint.left; 
-            int X = Paint.rcPaint.left;
-            int Y = Paint.rcPaint.top;
-
-            // (TODO) Clean up later
-            RECT ClientRect;
-            GetClientRect(window, &ClientRect);
-            Win32CopyBufferToWindow(&globalBuffer, deviceContext, &ClientRect, X, Y, width, height);
+            Win32WindowDimension dimension = Win32GetWindowDimension(window);
+            Win32CopyBufferToWindow(&globalBuffer, deviceContext, dimension.width, dimension.height);
             EndPaint(window, &Paint);
 
         }break;
 
-        // When the application is activated or deactivated
+        // When the application is activated or deactivated.
         case WM_ACTIVATEAPP:
         {
             OutputDebugStringA("WM_ACTIVATEAPP\n");
 
         }break;
 
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            uint32_t VKCode = LOWORD(wParam);
+            bool WasDown = ((lParam & (1 << 30)) != 0);
+
+            if(VKCode == VK_ESCAPE)
+            {
+                DestroyWindow(window);
+            }
+            else if (VKCode == 'W')
+            {
+                OutputDebugStringA("W key pressed\n");
+            }
+            else if (VKCode == 'A')
+            {
+                OutputDebugStringA("A key pressed\n");
+            }
+            else if (VKCode == 'S')
+            {
+                OutputDebugStringA("S key pressed\n");
+            }
+            else if (VKCode == 'D')
+            {
+                OutputDebugStringA("D key pressed\n");
+            }
+        }break;
+
         // Default case to handle all other messages
         default:
         {
-
             Result = DefWindowProc(window, message, wParam, lParam);
         }break;
     }
@@ -189,6 +212,8 @@ int WINAPI WinMain(
 
     // Define a window class and set attributes
     WNDCLASS WindowClass = {};
+
+    Win32ResizeDIBSection(&globalBuffer, 1280, 720);
     WindowClass.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     WindowClass.lpfnWndProc = win32MainWindowCallBack;
     WindowClass.hInstance = instance;
@@ -200,7 +225,7 @@ int WINAPI WinMain(
 
     if(RegisterClass(&WindowClass))
     {
-        HWND WindowHandle = CreateWindowEx(
+        HWND window = CreateWindowEx(
             0,                                                          //optional window styles
             METENGINE,                                                  // Window class name
             L"Met Engine",                                              // Window title
@@ -212,7 +237,7 @@ int WINAPI WinMain(
             NULL                                                         // Additional application data
             );
             
-        if(WindowHandle)
+        if(window)
         {
             windowRunning = true;
             int xOffset = 0;
@@ -236,16 +261,12 @@ int WINAPI WinMain(
                     DispatchMessage(&Message);
                 }
 
+
                 drawGradient(&globalBuffer, xOffset++, yOffset);
-
-                HDC deviceContext = GetDC(WindowHandle);
-
-                RECT ClientRect;
-                GetClientRect(WindowHandle, &ClientRect);
-                int windowWidth = ClientRect.right - ClientRect.left;
-                int windowHeight = ClientRect.bottom - ClientRect.top;
-                Win32CopyBufferToWindow(&globalBuffer, deviceContext, &ClientRect, 0, 0, windowWidth, windowHeight);
-                ReleaseDC(WindowHandle, deviceContext);
+                Win32WindowDimension dimension = Win32GetWindowDimension(window);
+                HDC deviceContext = GetDC(window);
+                Win32CopyBufferToWindow(&globalBuffer, deviceContext, dimension.width, dimension.height);
+                ReleaseDC(window, deviceContext);
                 ++xOffset;
             }
         }
@@ -283,20 +304,29 @@ internal void Win32ResizeDIBSection(Win32BackBuffer *Buffer, int width, int heig
     Buffer -> pitch = width * BYTES_PER_PIXEL;
 }
 
-internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, RECT *clientRect, int x, int y, int width, int height)
+internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext, int windowWidth, int windowHeight)
 {
-    int windowWidth = clientRect -> right - clientRect -> left;
-    int windowHeight = clientRect -> bottom - clientRect -> top;
 
     StretchDIBits(
-        deviceContext,                                      // permission from window to draw on a window
+        deviceContext,                                            // permission from windows to draw on a window
         /*
         x, y, width, height,
         x, y, width, height,
         */                                             
-        0, 0, Buffer->width, Buffer->height,                // Destination of a window we want to draw to
-        0, 0, Buffer->width, Buffer->height ,               // What we want to draw from our backbuffer
-        Buffer -> memory,                                   // Pointer to the backbuffer
-        &Buffer->bitmapInfo,                                // Information about the backbuffer
-        DIB_RGB_COLORS, SRCCOPY);                           // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
+        0, 0, windowWidth, windowHeight,                          // Destination of a window we want to draw to
+        0, 0, Buffer->width, Buffer->height,                      // What we want to draw from our backbuffer
+        Buffer->memory,                                           // Pointer to the backbuffer
+        &Buffer->bitmapInfo,                                      // Information about the backbuffer
+        DIB_RGB_COLORS, SRCCOPY);                                 // We want to copy RGB colors. And we specify the raster operation to copy the bits.);
+}
+
+internal Win32WindowDimension Win32GetWindowDimension(HWND window)
+{
+   Win32WindowDimension result;
+
+   RECT clientRect;
+    GetClientRect(window, &clientRect);
+    result.width = clientRect.right - clientRect.left;
+    result.height = clientRect.bottom - clientRect.top;
+    return result;
 }

@@ -54,7 +54,8 @@ LRESULT CALLBACK MainWindowCallBack(HWND Window, UINT Message, WPARAM WParam, LP
 
 /* Parameters: 
     int width - width of the backbuffer (window)
-    int width - width of the backbuffer (window)
+    int height - height of the backbuffer (window)
+    pointer to buffer struck
 
     What it does:
     Asks memory from windows and allocates it to the backbuffer.

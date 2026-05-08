@@ -14,6 +14,9 @@
 #include <wingdi.h>
 #include <memoryapi.h>
 #include <stdint.h>
+#include <combaseapi.h>
+#include <objbase.h>
+#include <xaudio2.h>
 
 struct Win32BackBuffer
 {
@@ -29,6 +32,7 @@ struct Win32WindowDimension
     int width;
     int height;
 };
+
 
 global_variable HWND window;
 global_variable bool windowRunning = false;

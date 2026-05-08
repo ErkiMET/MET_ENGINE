@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # executable
-add_executable(MET_ENGINE WIN32 src/window.cpp)
+add_executable(MET_ENGINE WIN32 src/window.cpp src/Xaudio2.cpp)
 
 # Link libraries
 target_link_libraries(MET_ENGINE PRIVATE

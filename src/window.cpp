@@ -16,7 +16,9 @@
 #include <stdint.h>
 #include <combaseapi.h>
 #include <objbase.h>
-#include <xaudio2.h>
+#include <dsound.h>
+
+import Win32DSound;
 
 struct Win32BackBuffer
 {
@@ -35,7 +37,7 @@ struct Win32WindowDimension
 
 
 global_variable HWND window;
-global_variable bool windowRunning = false;
+global_variable bool windowRunning = true;
 const global_variable int BYTES_PER_PIXEL = 4;
 global_variable struct Win32BackBuffer globalBuffer;
 
@@ -87,7 +89,6 @@ internal void Win32CopyBufferToWindow(Win32BackBuffer *Buffer, HDC deviceContext
     Fills the backbuffer with a gradient pattern.
 */
 internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOffset);
-
 
 internal void drawGradient(Win32BackBuffer *Buffer, int BlueOffset, int GreenOffset)
 {
@@ -243,11 +244,26 @@ int WINAPI WinMain(
             );
             
         if(window)
-        {
-            windowRunning = true;
+        {   
+            HDC deviceContext = GetDC(window);
+            // Graphics test
             int xOffset = 0;
             int yOffset = 0;
+
+            //sound tests
+            int samplesPerSecond = 48000 ;
+            int toneHz = 256;
+            int toneVolume = 1000;
+            uint32_t runningSampleIndex = 0;
+            int squareWaveCounter = 0;
+            int squareWavePeriod = samplesPerSecond / toneHz;
+            int halfSquareWavePeriod = squareWavePeriod / 2;
+            int bytesPerSample = sizeof(int16_t) * 2;
+            uint32_t secondaryBufferSize = samplesPerSecond * bytesPerSample;
+            win32InitDsound(window, samplesPerSecond, secondaryBufferSize);
+            globalSecondaryBuffer -> Play(0, 0, DSBPLAY_LOOPING);
             // Main message loop
+
             while(windowRunning)
             {
                 MSG Message;
@@ -268,8 +284,58 @@ int WINAPI WinMain(
 
 
                 drawGradient(&globalBuffer, xOffset++, yOffset);
+
+                // Note(Erkik): DirectSound output test
+                //We have a sound buffer that writes LEFT RIGHT LEFT RIGHt
+                //each side is / region is int 16bits
+                // we have to output one sample which is [LEFT RIGHT] whis is 32 int bit
+                DWORD playCursor;
+                DWORD writeCursor;
+                if(SUCCEEDED(globalSecondaryBuffer -> GetCurrentPosition(&playCursor, &writeCursor)))
+                {
+                    DWORD byteToLock = runningSampleIndex * bytesPerSample % secondaryBufferSize;
+                    DWORD bytesToWrite;
+                    if(byteToLock > playCursor)
+                    {
+                        bytesToWrite = (secondaryBufferSize - byteToLock);
+                        bytesToWrite += playCursor;
+                    } 
+                    else
+                    {
+                        bytesToWrite = playCursor - byteToLock;
+                    }
+
+                    VOID *region1;
+                    DWORD region1Size;
+                    VOID *region2;
+                    DWORD region2Size;
+
+                    if(SUCCEEDED(globalSecondaryBuffer -> Lock(byteToLock, bytesToWrite, &region1, &region1Size, &region2, &region2Size, 0))){
+                        // TODO(Erkik): Assert that region1size / 2 is valid
+                        int16_t *sampleOut = (int16_t *)region1;
+                        DWORD region1SampleCount = region1Size / bytesPerSample;
+                        for(DWORD sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex)
+                        {
+                            int16_t  sampleValue = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? toneVolume : -toneVolume;
+                            *sampleOut++ = sampleValue;
+                            *sampleOut++ = sampleValue;
+                            ++runningSampleIndex;
+                        }
+                        DWORD region2SampleCount = region2Size / bytesPerSample;
+                        sampleOut = (int16_t*)region2;
+                        for(DWORD sampleIndex = 0; sampleIndex < region2SampleCount; ++sampleIndex)
+                        {
+                            int16_t  sampleValue = ((runningSampleIndex / halfSquareWavePeriod) % 2) ? toneVolume : -toneVolume;
+                            *sampleOut++ = sampleValue;
+                            *sampleOut++ = sampleValue;   
+                            ++runningSampleIndex;
+                        }
+
+                       globalSecondaryBuffer -> Unlock(region1, region1Size, region2, region2Size);
+                    }
+                }
+
                 Win32WindowDimension dimension = Win32GetWindowDimension(window);
-                HDC deviceContext = GetDC(window);
                 Win32CopyBufferToWindow(&globalBuffer, deviceContext, dimension.width, dimension.height);
                 ReleaseDC(window, deviceContext);
                 ++xOffset;

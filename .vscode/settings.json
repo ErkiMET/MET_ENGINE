@@ -1,3 +1,5 @@
 {
-    "memory-view.showMemoryPanel": true
+    "memory-view.showMemoryPanel": true,
+    "cmake.generator": "Ninja",
+    "C_Cpp.errorSquiggles": "disabled"
 }

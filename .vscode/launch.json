@@ -5,7 +5,7 @@
             "name": "Met-engine Debug",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/Build/Debug/MET_ENGINE.exe",
+            "program": "${workspaceFolder}/Build/MET_ENGINE.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
